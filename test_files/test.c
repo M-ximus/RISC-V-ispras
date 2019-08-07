@@ -1,7 +1,6 @@
-int puts(const char* str);
+int f(void);
 
-int main()
+int g()
 {
-  puts("Yees");
-  return 0;
+  return -f();
 }
