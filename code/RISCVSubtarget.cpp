@@ -53,10 +53,13 @@ RISCVSubtarget::RISCVSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
 //but it should be extended by different types of executable files
 unsigned char RISCVSubtarget::classifyGlobalFunctionReference(
    const GlobalValue *GV, const TargetMachine &TM) const {
-  auto *F = dync_cast<Function>(GV);
-  if (F && F->hasAttribute(Attribute::NonLazyBind) &&
-      !TM.shouldAssumeDSOLocal(*GV->getParent(), GV))
-    return RISCVII::MO_GOT_HI;
-
-  return RISCV::MO_None;
-}					
+  auto *F = dyn_cast<Function>(GV);
+  if (F && !TM.shouldAssumeDSOLocal(*GV->getParent(), GV)) {
+    //We can call function without plt via got but it needs non-lazy start
+    if (F->hasFnAttribute(Attribute::NonLazyBind))
+      return RISCVII::MO_GOT_HI;
+    return RISCVII::MO_PLT;
+  }
+  //return RISCVII::MO_None;
+  return RISCVII::MO_CALL;
+}

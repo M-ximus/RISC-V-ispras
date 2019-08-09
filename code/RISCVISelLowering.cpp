@@ -2169,8 +2169,9 @@ SDValue RISCVTargetLowering::LowerCall(CallLoweringInfo &CLI,
 
     if (OpFlags == RISCVII::MO_GOT_HI)//Maybe NO_PLT
     {
-      Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, RISCVII::MO_GOT_HI);
-      Callee = DAG.getNode(RISCV::PseudoCALLIndirect, DL, PtrVT, Callee);
+      //Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, RISCVII::MO_GOT_HI);
+      //Callee = DAG.getNode(RISCV::PseudoCALLIndirect, DL, PtrVT, Callee);
+      Callee = getAddr(S, DAG, 0);
       //Callee = DAG.getNode(RISCV::PseudoLA, DL, PtrVT, Addr);
       //Callee = DAG.getNode(RISCV::PseudoCALLIndirect, DL, PtrVT, Callee);
     }else{
