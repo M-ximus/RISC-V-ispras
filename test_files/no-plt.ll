@@ -1,9 +1,9 @@
-; RUN: llc -mtriple=riscv64-linux-gnu --relocation-model=pic < %s | FileCheck %s
+; RUN: llc -mtriple=riscv64 -relocation-model=pic < %s | FileCheck %s
 
 declare void @global() nonlazybind
 
-define void @no_PLT_call() nounwind {
-  ;CHECK-LABEL: no_PLT_call:
+define void @no_plt_call() nounwind {
+  ;CHECK-LABEL: no_plt_call:
 
   ;CHECK: # %bb.0:
 
