@@ -52,8 +52,8 @@ RISCVSubtarget::RISCVSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
 unsigned char RISCVSubtarget::classifyGlobalFunctionReference(
     const GlobalValue *GV, const TargetMachine &TM) const {
   auto *F = dyn_cast<Function>(GV);
-  if (F && !TM.shouldAssumeDSOLocal(*GV->getParent(), GV)) {
-    if (F->hasFnAttribute(Attribute::NonLazyBind))
+  if (!TM.shouldAssumeDSOLocal(*GV->getParent(), GV)) {
+    if (F && F->hasFnAttribute(Attribute::NonLazyBind))
       return RISCVII::MO_GOT_HI;
     return RISCVII::MO_PLT;
   }

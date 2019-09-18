@@ -2192,13 +2192,12 @@ SDValue RISCVTargetLowering::LowerCall(CallLoweringInfo &CLI,
     const GlobalValue *GV = S->getGlobal();
 
     unsigned OpFlags =
-             Subtarget.classifyGlobalFunctionReference(GV, getTargetMachine());
+        Subtarget.classifyGlobalFunctionReference(GV, getTargetMachine());
 
     if (OpFlags == RISCVII::MO_GOT_HI)
-      Callee = getAddr(S, DAG, 0);
+      Callee = getAddr(S, DAG, /*IsLocal=*/false);
     else
       Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, OpFlags);
-
   } else if (ExternalSymbolSDNode *S = dyn_cast<ExternalSymbolSDNode>(Callee)) {
     unsigned OpFlags = RISCVII::MO_CALL;
 

@@ -1,22 +1,22 @@
-From 84d1e5cf535357a7d227e407354f6e611c0ba4c6 Mon Sep 17 00:00:00 2001
+From 62a138cdbb400e3302d6b746974606d95c776c07 Mon Sep 17 00:00:00 2001
 From: Maxim Davydov <Davydov.MA@phystech.edu>
-Date: Thu, 15 Aug 2019 17:29:14 +0300
-Subject: [PATCH] Support NonLazyBind for RISCV
+Date: Wed, 18 Sep 2019 17:08:58 +0300
+Subject: [PATCH 2/2] [RISCV] Support NonLazyBind for RISC-V
 
-This patch is needed to load call address from shared library without PLT(load from GOT).
+This patch is needed to load call address from shared library without the PLT(load from the GOT)
 ---
- llvm/lib/Target/RISCV/RISCVISelLowering.cpp | 11 ++++++----
- llvm/lib/Target/RISCV/RISCVSubtarget.cpp    | 11 ++++++++++
+ llvm/lib/Target/RISCV/RISCVISelLowering.cpp | 12 ++++++++----
+ llvm/lib/Target/RISCV/RISCVSubtarget.cpp    | 11 +++++++++++
  llvm/lib/Target/RISCV/RISCVSubtarget.h      |  5 +++++
- llvm/test/CodeGen/RISCV/no-plt.ll           | 23 +++++++++++++++++++++
- 4 files changed, 46 insertions(+), 4 deletions(-)
+ llvm/test/CodeGen/RISCV/no-plt.ll           | 20 ++++++++++++++++++++
+ 4 files changed, 44 insertions(+), 4 deletions(-)
  create mode 100644 llvm/test/CodeGen/RISCV/no-plt.ll
 
 diff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
-index e822b521fc0..be10a73619c 100644
+index 371e19c2ee0..60f0244b195 100644
 --- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
 +++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
-@@ -1,2762 +1,2765 @@
+@@ -1,2784 +1,2788 @@
  //===-- RISCVISelLowering.cpp - RISCV DAG Lowering Implementation  --------===//
  //
  // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -216,8 +216,8 @@ index e822b521fc0..be10a73619c 100644
  
    setBooleanContents(ZeroOrOneBooleanContent);
  
-   // Function alignments (log2).
-   unsigned FunctionAlignment = Subtarget.hasStdExtC() ? 1 : 2;
+   // Function alignments.
+   const llvm::Align FunctionAlignment(Subtarget.hasStdExtC() ? 2 : 4);
    setMinFunctionAlignment(FunctionAlignment);
    setPrefFunctionAlignment(FunctionAlignment);
  
@@ -725,7 +725,7 @@ index e822b521fc0..be10a73619c 100644
  
    // Return the value of the return address register, marking it an implicit
    // live-in.
-   unsigned Reg = MF.addLiveIn(RI.getRARegister(), getRegClassFor(XLenVT));
+   Register Reg = MF.addLiveIn(RI.getRARegister(), getRegClassFor(XLenVT));
    return DAG.getCopyFromReg(DAG.getEntryNode(), DL, Reg, XLenVT);
  }
  
@@ -1097,8 +1097,8 @@ index e822b521fc0..be10a73619c 100644
    return 1;
  }
  
- MachineBasicBlock *emitReadCycleWidePseudo(MachineInstr &MI,
-                                            MachineBasicBlock *BB) {
+ static MachineBasicBlock *emitReadCycleWidePseudo(MachineInstr &MI,
+                                                   MachineBasicBlock *BB) {
    assert(MI.getOpcode() == RISCV::ReadCycleWide && "Unexpected instruction");
  
    // To read the 64-bit cycle CSR on a 32-bit target, we read the two halves.
@@ -1265,7 +1265,7 @@ index e822b521fc0..be10a73619c 100644
    auto CC = static_cast<ISD::CondCode>(MI.getOperand(3).getImm());
  
    SmallVector<MachineInstr *, 4> SelectDebugValues;
-   SmallSet<unsigned, 4> SelectDests;
+   SmallSet<Register, 4> SelectDests;
    SelectDests.insert(MI.getOperand(0).getReg());
  
    MachineInstr *LastSelectPseudo = &MI;
@@ -1423,7 +1423,7 @@ index e822b521fc0..be10a73619c 100644
                                  MVT ValVT2, MVT LocVT2,
                                  ISD::ArgFlagsTy ArgFlags2) {
    unsigned XLenInBytes = XLen / 8;
-   if (unsigned Reg = State.AllocateReg(ArgGPRs)) {
+   if (Register Reg = State.AllocateReg(ArgGPRs)) {
      // At least one half can be passed via register.
      State.addLoc(CCValAssign::getReg(VA1.getValNo(), VA1.getValVT(), Reg,
                                       VA1.getLocVT(), CCValAssign::Full));
@@ -1440,7 +1440,7 @@ index e822b521fc0..be10a73619c 100644
      return false;
    }
  
-   if (unsigned Reg = State.AllocateReg(ArgGPRs)) {
+   if (Register Reg = State.AllocateReg(ArgGPRs)) {
      // The second half can also be passed via register.
      State.addLoc(
          CCValAssign::getReg(ValNo2, ValVT2, Reg, LocVT2, CCValAssign::Full));
@@ -1540,7 +1540,7 @@ index e822b521fc0..be10a73619c 100644
      // GPRs, split between a GPR and the stack, or passed completely on the
      // stack. LowerCall/LowerFormalArguments/LowerReturn must recognise these
      // cases.
-     unsigned Reg = State.AllocateReg(ArgGPRs);
+     Register Reg = State.AllocateReg(ArgGPRs);
      LocVT = MVT::i32;
      if (!Reg) {
        unsigned StackOffset = State.AllocateStack(8, 8);
@@ -1582,7 +1582,7 @@ index e822b521fc0..be10a73619c 100644
    }
  
    // Allocate to a register if possible, or else a stack slot.
-   unsigned Reg;
+   Register Reg;
    if (ValVT == MVT::f32 && !UseGPRForF32)
      Reg = State.AllocateReg(ArgFPR32s, ArgFPR64s);
    else if (ValVT == MVT::f64 && !UseGPRForF64)
@@ -1965,7 +1965,6 @@ index e822b521fc0..be10a73619c 100644
  
    auto &Callee = CLI.Callee;
    auto CalleeCC = CLI.CallConv;
-   auto IsVarArg = CLI.IsVarArg;
    auto &Outs = CLI.Outs;
    auto &Caller = MF.getFunction();
    auto CallerCC = Caller.getCallingConv();
@@ -1980,10 +1979,6 @@ index e822b521fc0..be10a73619c 100644
    // TODO: The "interrupt" attribute isn't currently defined by RISC-V. This
    // should be expanded as new function attributes are introduced.
    if (Caller.hasFnAttribute("interrupt"))
-     return false;
- 
-   // Do not tail call opt functions with varargs.
-   if (IsVarArg)
      return false;
  
    // Do not tail call opt if the stack is used to pass parameters.
@@ -2102,7 +2097,7 @@ index e822b521fc0..be10a73619c 100644
      Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, CLI.DL);
  
    // Copy argument values to their designated locations.
-   SmallVector<std::pair<unsigned, SDValue>, 8> RegsToPass;
+   SmallVector<std::pair<Register, SDValue>, 8> RegsToPass;
    SmallVector<SDValue, 8> MemOpChains;
    SDValue StackPtr;
    for (unsigned i = 0, j = 0, e = ArgLocs.size(); i != e; ++i) {
@@ -2132,7 +2127,7 @@ index e822b521fc0..be10a73619c 100644
              DAG.getStore(Chain, DL, Hi, StackPtr, MachinePointerInfo()));
        } else {
          // Second half of f64 is passed in another GPR.
-         unsigned RegHigh = RegLo + 1;
+         Register RegHigh = RegLo + 1;
          RegsToPass.push_back(std::make_pair(RegHigh, Hi));
        }
        continue;
@@ -2209,6 +2204,8 @@ index e822b521fc0..be10a73619c 100644
    // If the callee is a GlobalAddress/ExternalSymbol node, turn it into a
    // TargetGlobalAddress/TargetExternalSymbol node so that legalize won't
    // split it and then direct call can be matched by PseudoCALL.
++  // GlobalAddress/ExternalSymbol may become a normal node
++  // and indirectly called if using NonLazyBind.
    if (GlobalAddressSDNode *S = dyn_cast<GlobalAddressSDNode>(Callee)) {
      const GlobalValue *GV = S->getGlobal();
  
@@ -2216,14 +2213,13 @@ index e822b521fc0..be10a73619c 100644
 -    if (!getTargetMachine().shouldAssumeDSOLocal(*GV->getParent(), GV))
 -      OpFlags = RISCVII::MO_PLT;
 +    unsigned OpFlags =
-+             Subtarget.classifyGlobalFunctionReference(GV, getTargetMachine());
-+
-+    if (OpFlags == RISCVII::MO_GOT_HI)
-+      Callee = getAddr(S, DAG, 0);
-+    else
-+      Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, OpFlags);
++        Subtarget.classifyGlobalFunctionReference(GV, getTargetMachine());
  
 -    Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, OpFlags);
++    if (OpFlags == RISCVII::MO_GOT_HI)
++      Callee = getAddr(S, DAG, /*IsLocal=*/false);
++    else
++      Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, OpFlags);
    } else if (ExternalSymbolSDNode *S = dyn_cast<ExternalSymbolSDNode>(Callee)) {
      unsigned OpFlags = RISCVII::MO_CALL;
  
@@ -2355,7 +2351,7 @@ index e822b521fc0..be10a73619c 100644
        SDValue Lo = SplitF64.getValue(0);
        SDValue Hi = SplitF64.getValue(1);
        Register RegLo = VA.getLocReg();
-       unsigned RegHi = RegLo + 1;
+       Register RegHi = RegLo + 1;
        Chain = DAG.getCopyToReg(Chain, DL, RegLo, Lo, Glue);
        Glue = Chain.getValue(1);
        RetOps.push_back(DAG.getRegister(RegLo, MVT::i32));
@@ -2463,6 +2459,8 @@ index e822b521fc0..be10a73619c 100644
      case 'J':
      case 'K':
        return C_Immediate;
+     case 'A':
+       return C_Memory;
      }
    }
    return TargetLowering::getConstraintType(Constraint);
@@ -2493,7 +2491,7 @@ index e822b521fc0..be10a73619c 100644
    // official names. However, other frontends like `rustc` do not. This allows
    // users of these frontends to use the ABI names for registers in LLVM-style
    // register constraints.
-   unsigned XRegFromAlias = StringSwitch<unsigned>(Constraint.lower())
+   Register XRegFromAlias = StringSwitch<Register>(Constraint.lower())
                                 .Case("{zero}", RISCV::X0)
                                 .Case("{ra}", RISCV::X1)
                                 .Case("{sp}", RISCV::X2)
@@ -2538,8 +2536,8 @@ index e822b521fc0..be10a73619c 100644
    // The second case is the ABI name of the register, so that frontends can also
    // use the ABI names in register constraint lists.
    if (Subtarget.hasStdExtF() || Subtarget.hasStdExtD()) {
-     std::pair<unsigned, unsigned> FReg =
-         StringSwitch<std::pair<unsigned, unsigned>>(Constraint.lower())
+     std::pair<Register, Register> FReg =
+         StringSwitch<std::pair<Register, Register>>(Constraint.lower())
              .Cases("{f0}", "{ft0}", {RISCV::F0_32, RISCV::F0_64})
              .Cases("{f1}", "{ft1}", {RISCV::F1_32, RISCV::F1_64})
              .Cases("{f2}", "{ft2}", {RISCV::F2_32, RISCV::F2_64})
@@ -2580,6 +2578,21 @@ index e822b521fc0..be10a73619c 100644
    }
  
    return TargetLowering::getRegForInlineAsmConstraint(TRI, Constraint, VT);
+ }
+ 
+ unsigned
+ RISCVTargetLowering::getInlineAsmMemConstraint(StringRef ConstraintCode) const {
+   // Currently only support length 1 constraints.
+   if (ConstraintCode.size() == 1) {
+     switch (ConstraintCode[0]) {
+     case 'A':
+       return InlineAsm::Constraint_A;
+     default:
+       break;
+     }
+   }
+ 
+   return TargetLowering::getInlineAsmMemConstraint(ConstraintCode);
  }
  
  void RISCVTargetLowering::LowerAsmOperandForConstraint(
@@ -2786,11 +2799,21 @@ index e822b521fc0..be10a73619c 100644
      const Constant *PersonalityFn) const {
    return RISCV::X11;
  }
+ 
+ bool RISCVTargetLowering::shouldExtendTypeInLibCall(EVT Type) const {
+   // Return false to suppress the unnecessary extensions if the LibCall
+   // arguments or return value is f32 type for LP64 ABI.
+   RISCVABI::ABI ABI = Subtarget.getTargetABI();
+   if (ABI == RISCVABI::ABI_LP64 && (Type == MVT::f32))
+     return false;
+ 
+   return true;
+ }
 diff --git a/llvm/lib/Target/RISCV/RISCVSubtarget.cpp b/llvm/lib/Target/RISCV/RISCVSubtarget.cpp
-index 6902ed75d85..cac29deaa8a 100644
+index 5673f2205a6..f3a40bc1dae 100644
 --- a/llvm/lib/Target/RISCV/RISCVSubtarget.cpp
 +++ b/llvm/lib/Target/RISCV/RISCVSubtarget.cpp
-@@ -1,50 +1,61 @@
+@@ -1,78 +1,89 @@
  //===-- RISCVSubtarget.cpp - RISCV Subtarget Information ------------------===//
  //
  // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -2805,7 +2828,11 @@ index 6902ed75d85..cac29deaa8a 100644
  
  #include "RISCVSubtarget.h"
  #include "RISCV.h"
+ #include "RISCVCallLowering.h"
  #include "RISCVFrameLowering.h"
+ #include "RISCVLegalizerInfo.h"
+ #include "RISCVRegisterBankInfo.h"
+ #include "RISCVTargetMachine.h"
  #include "llvm/Support/TargetRegistry.h"
  
  using namespace llvm;
@@ -2840,23 +2867,47 @@ index 6902ed75d85..cac29deaa8a 100644
                                 StringRef ABIName, const TargetMachine &TM)
      : RISCVGenSubtargetInfo(TT, CPU, FS),
        FrameLowering(initializeSubtargetDependencies(TT, CPU, FS, ABIName)),
-       InstrInfo(), RegInfo(getHwMode()), TLInfo(TM, *this) {}
-+
+       InstrInfo(), RegInfo(getHwMode()), TLInfo(TM, *this) {
+   CallLoweringInfo.reset(new RISCVCallLowering(*getTargetLowering()));
+   Legalizer.reset(new RISCVLegalizerInfo(*this));
+ 
+   auto *RBI = new RISCVRegisterBankInfo(*getRegisterInfo());
+   RegBankInfo.reset(RBI);
+   InstSelector.reset(createRISCVInstructionSelector(
+       *static_cast<const RISCVTargetMachine *>(&TM), *this, *RBI));
+ }
+ 
 +unsigned char RISCVSubtarget::classifyGlobalFunctionReference(
 +    const GlobalValue *GV, const TargetMachine &TM) const {
 +  auto *F = dyn_cast<Function>(GV);
-+  if (F && !TM.shouldAssumeDSOLocal(*GV->getParent(), GV)) {
-+    if (F->hasFnAttribute(Attribute::NonLazyBind))
++  if (!TM.shouldAssumeDSOLocal(*GV->getParent(), GV)) {
++    if (F && F->hasFnAttribute(Attribute::NonLazyBind))
 +      return RISCVII::MO_GOT_HI;
 +    return RISCVII::MO_PLT;
 +  }
 +  return RISCVII::MO_CALL;
 +}
++
+ const CallLowering *RISCVSubtarget::getCallLowering() const {
+   return CallLoweringInfo.get();
+ }
+ 
+ InstructionSelector *RISCVSubtarget::getInstructionSelector() const {
+   return InstSelector.get();
+ }
+ 
+ const LegalizerInfo *RISCVSubtarget::getLegalizerInfo() const {
+   return Legalizer.get();
+ }
+ 
+ const RegisterBankInfo *RISCVSubtarget::getRegBankInfo() const {
+   return RegBankInfo.get();
+ }
 diff --git a/llvm/lib/Target/RISCV/RISCVSubtarget.h b/llvm/lib/Target/RISCV/RISCVSubtarget.h
-index 106ff49f021..00585edea27 100644
+index 7d0373a5253..bbac78b2042 100644
 --- a/llvm/lib/Target/RISCV/RISCVSubtarget.h
 +++ b/llvm/lib/Target/RISCV/RISCVSubtarget.h
-@@ -1,92 +1,97 @@
+@@ -1,112 +1,117 @@
  //===-- RISCVSubtarget.h - Define Subtarget for the RISCV -------*- C++ -*-===//
  //
  // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -2876,6 +2927,10 @@ index 106ff49f021..00585edea27 100644
  #include "RISCVISelLowering.h"
  #include "RISCVInstrInfo.h"
  #include "Utils/RISCVBaseInfo.h"
+ #include "llvm/CodeGen/GlobalISel/CallLowering.h"
+ #include "llvm/CodeGen/GlobalISel/InstructionSelector.h"
+ #include "llvm/CodeGen/GlobalISel/LegalizerInfo.h"
+ #include "llvm/CodeGen/GlobalISel/RegisterBankInfo.h"
  #include "llvm/CodeGen/SelectionDAGTargetInfo.h"
  #include "llvm/CodeGen/TargetSubtargetInfo.h"
  #include "llvm/IR/DataLayout.h"
@@ -2897,6 +2952,7 @@ index 106ff49f021..00585edea27 100644
    bool HasRV64 = false;
    bool IsRV32E = false;
    bool EnableLinkerRelax = false;
+   bool EnableRVCHintInstrs = false;
    unsigned XLen = 32;
    MVT XLenVT = MVT::i32;
    RISCVABI::ABI TargetABI = RISCVABI::ABI_Unknown;
@@ -2921,8 +2977,8 @@ index 106ff49f021..00585edea27 100644
    // definition of this function is auto-generated by tblgen.
    void ParseSubtargetFeatures(StringRef CPU, StringRef FS);
  
-+  /// Return how the function given by GV should be invoked:
-+  /// via PLT, by taking its address from GOT, or with a direct call.
++  // Return how the function given by GV should be invoked:
++  // via the PLT, by taking its address from the GOT, or with a direct call.
 +  unsigned char classifyGlobalFunctionReference(const GlobalValue *GV,
 +  						const TargetMachine &TM) const;
 +
@@ -2939,6 +2995,7 @@ index 106ff49f021..00585edea27 100644
    const SelectionDAGTargetInfo *getSelectionDAGInfo() const override {
      return &TSInfo;
    }
+   bool enableMachineScheduler() const override { return true; }
    bool hasStdExtM() const { return HasStdExtM; }
    bool hasStdExtA() const { return HasStdExtA; }
    bool hasStdExtF() const { return HasStdExtF; }
@@ -2947,39 +3004,50 @@ index 106ff49f021..00585edea27 100644
    bool is64Bit() const { return HasRV64; }
    bool isRV32E() const { return IsRV32E; }
    bool enableLinkerRelax() const { return EnableLinkerRelax; }
+   bool enableRVCHintInstrs() const { return EnableRVCHintInstrs; }
    MVT getXLenVT() const { return XLenVT; }
    unsigned getXLen() const { return XLen; }
    RISCVABI::ABI getTargetABI() const { return TargetABI; }
+ 
+ protected:
+   // GlobalISel related APIs.
+   std::unique_ptr<CallLowering> CallLoweringInfo;
+   std::unique_ptr<InstructionSelector> InstSelector;
+   std::unique_ptr<LegalizerInfo> Legalizer;
+   std::unique_ptr<RegisterBankInfo> RegBankInfo;
+ 
+ public:
+   const CallLowering *getCallLowering() const override;
+   InstructionSelector *getInstructionSelector() const override;
+   const LegalizerInfo *getLegalizerInfo() const override;
+   const RegisterBankInfo *getRegBankInfo() const override;
  };
  } // End llvm namespace
  
  #endif
 diff --git a/llvm/test/CodeGen/RISCV/no-plt.ll b/llvm/test/CodeGen/RISCV/no-plt.ll
 new file mode 100644
-index 00000000000..26f4fd36dfd
+index 00000000000..14a7c0897a5
 --- /dev/null
 +++ b/llvm/test/CodeGen/RISCV/no-plt.ll
-@@ -0,0 +1,23 @@
-+; RUN: llc -mtriple=riscv64-linux-gnu --relocation-model=pic < %s | FileCheck %s
+@@ -0,0 +1,20 @@
++; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py
++; RUN: llc -mtriple=riscv64 -relocation-model=pic < %s | FileCheck %s
 +
 +declare void @global() nonlazybind
 +
-+define void @no_PLT_call() nounwind {
-+  ;CHECK-LABEL: no_PLT_call:
-+
-+  ;CHECK: # %bb.0:
-+
-+  ;CHECK-NEXT: addi sp, sp, -16
-+  ;CHECK-NEXT: sd ra, 8(sp)
-+
-+  ;CHECK-NEXT: .LBB0_1: # Label of block must be emitted
-+
-+  ;CHECK-NEXT: auipc	a0, %got_pcrel_hi(global)
-+  ;CHECK-NEXT: ld	a0, %pcrel_lo(.LBB0_1)(a0)
-+  ;CHECK-NEXT: jalr	a0
-+
-+  ;CHECK-NEXT: ld	ra, 8(sp)
-+
++define void @no_plt_call() nounwind {
++; CHECK-LABEL: no_plt_call:
++; CHECK:       # %bb.0:
++; CHECK-NEXT:    addi sp, sp, -16
++; CHECK-NEXT:    sd ra, 8(sp)
++; CHECK-NEXT:  .LBB0_1: # Label of block must be emitted
++; CHECK-NEXT:    auipc a0, %got_pcrel_hi(global)
++; CHECK-NEXT:    ld a0, %pcrel_lo(.LBB0_1)(a0)
++; CHECK-NEXT:    jalr a0
++; CHECK-NEXT:    ld ra, 8(sp)
++; CHECK-NEXT:    addi sp, sp, 16
++; CHECK-NEXT:    ret
 +  call void @global()
 +  ret void
 +}
